@@ -1,0 +1,55 @@
+# Python cache and build artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.dll
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments and local tooling
+.venv/
+venv/
+env/
+openvino_env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# OS/editor junk
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs and local runtime outputs
+logs/
+*.log
+
+# Datasets and generated benchmark artifacts
+data/MNIST/
+data/timm___mini-imagenet/
+data/zh-plus___tiny-imagenet/
+data/pruning_stats.csv
+final-results/
+sample/benchmark_results.csv
+
+# Trained/compiled model binaries
+models/**/*.pt
+models/**/*.pth
+models/**/*.onnx
+models/**/*.xml
+models/**/*.bin
+models/**/dense/
+models/**/pruned/
+models/**/quantized/
+models/**/*
+
+# Docker and compose local env
+.env
+.env.*
+*.local

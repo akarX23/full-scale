@@ -1,0 +1,318 @@
+@ARTICLE{726791,
+  author={Lecun, Y. and Bottou, L. and Bengio, Y. and Haffner, P.},
+  journal={Proceedings of the IEEE}, 
+  title={Gradient-based learning applied to document recognition}, 
+  year={1998},
+  volume={86},
+  number={11},
+  pages={2278-2324},
+  keywords={Neural networks;Pattern recognition;Machine learning;Optical character recognition software;Character recognition;Feature extraction;Multi-layer neural network;Optical computing;Hidden Markov models;Principal component analysis},
+  doi={10.1109/5.726791}}
+
+@article{DBLP:journals/corr/SzegedyLJSRAEVR14,
+  author       = {Christian Szegedy and
+                  Wei Liu and
+                  Yangqing Jia and
+                  Pierre Sermanet and
+                  Scott E. Reed and
+                  Dragomir Anguelov and
+                  Dumitru Erhan and
+                  Vincent Vanhoucke and
+                  Andrew Rabinovich},
+  title        = {Going Deeper with Convolutions},
+  journal      = {CoRR},
+  volume       = {abs/1409.4842},
+  year         = {2014},
+  url          = {http://arxiv.org/abs/1409.4842},
+  eprinttype    = {arXiv},
+  eprint       = {1409.4842},
+  timestamp    = {Mon, 13 Aug 2018 16:48:52 +0200},
+  biburl       = {https://dblp.org/rec/journals/corr/SzegedyLJSRAEVR14.bib},
+  bibsource    = {dblp computer science bibliography, https://dblp.org}
+}
+
+@misc{he2015deepresiduallearningimage,
+      title={Deep Residual Learning for Image Recognition}, 
+      author={Kaiming He and Xiangyu Zhang and Shaoqing Ren and Jian Sun},
+      year={2015},
+      eprint={1512.03385},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/1512.03385}, 
+}
+
+@Article{systems13090797,
+AUTHOR = {Hong, Youngpyo and Kim, Dongsoo},
+TITLE = {Performance and Efficiency Gains of NPU-Based Servers over GPUs for AI Model Inference},
+JOURNAL = {Systems},
+VOLUME = {13},
+YEAR = {2025},
+NUMBER = {9},
+ARTICLE-NUMBER = {797},
+URL = {https://www.mdpi.com/2079-8954/13/9/797},
+ISSN = {2079-8954},
+ABSTRACT = {The exponential growth of AI applications has intensified the demand for efficient inference hardware capable of delivering low-latency, high-throughput, and energy-efficient performance. This study presents a systematic, empirical comparison of GPU- and NPU-based server platforms across key AI inference domains: text-to-text, text-to-image, multimodal understanding, and object detection. We configure representative models—LLama-family for text generation, Stable Diffusion variants for image synthesis, LLaVA-NeXT for multimodal tasks, and YOLO11 series for object detection—on a dual NVIDIA A100 GPU server and an eight-chip RBLN-CA12 NPU server. Performance metrics including latency, throughput, power consumption, and energy efficiency are measured under realistic workloads. Results demonstrate that NPUs match or exceed GPU throughput in many inference scenarios while consuming 35–70% less power. Moreover, optimization with the vLLM library on NPUs nearly doubles the tokens-per-second and yields a 92% increase in power efficiency. Our findings validate the potential of NPU-based inference architectures to reduce operational costs and energy footprints, offering a viable alternative to the prevailing GPU-dominated paradigm.},
+DOI = {10.3390/systems13090797}
+}
+
+@inproceedings{10.1145/3412382.3458272,
+author = {Tan, Tianxiang and Cao, Guohong},
+title = {Efficient Execution of Deep Neural Networks on Mobile Devices with NPU},
+year = {2021},
+isbn = {9781450380980},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3412382.3458272},
+doi = {10.1145/3412382.3458272},
+abstract = {Many Deep Neural Network (DNN) based applications have been developed and run on mobile devices. Although these advanced DNN models can provide better results, they also suffer from high computational overhead which means long delay and more energy consumption when running on mobile devices. To address these problems, many companies have developed dedicated Neural Processing Units (NPUs) for mobile devices, which can process AI features. Compared to CPU, NPU can run DNN models much faster, but with lower accuracy. To address this issue, we leverage model partition techniques to improve the performance of DNN models on mobile devices with NPU. The challenge is to determine which part of the DNN model should be run on CPU and which part to be run on NPU. Based on the delay and the accuracy requirements of the applications, we study two problems: Max-Accuracy where the goal is to maximize the accuracy under some time constraint, and Min-Time where the goal is to minimize the processing time while ensuring the accuracy is above a certain threshold. To solve these problems, we propose heuristic based algorithms which are simple but only search a small number of layer combinations (i.e., where to run which DNN model layers). To further improve the performance, we propose a Machine Learning based Model Partition (MLMP) algorithm. MLMP searches more layer combinations and considers both accuracy loss and processing time simultaneously. We also address many implementation issues to support model partition techniques on mobile devices with NPU. Experimental results show that MLMP outperforms the heuristic based algorithms and it can significantly improve the accuracy or reduce the processing time based on the application requirements.},
+booktitle = {Proceedings of the 20th International Conference on Information Processing in Sensor Networks (Co-Located with CPS-IoT Week 2021)},
+pages = {283–298},
+numpages = {16},
+keywords = {Deep Learning, Internet of Things, Mobile Computing, NPU},
+location = {Nashville, TN, USA},
+series = {IPSN '21}
+}
+
+@ARTICLE{9320571,
+  author={Qi, Qi and Lu, Yan and Li, Jiashi and Wang, Jingyu and Sun, Haifeng and Liao, Jianxin},
+  journal={IEEE Transactions on Emerging Topics in Computing}, 
+  title={Learning Low Resource Consumption CNN Through Pruning and Quantization}, 
+  year={2022},
+  volume={10},
+  number={2},
+  pages={886-903},
+  keywords={Neural networks;Quantization (signal);Computational modeling;Training;Task analysis;Deep learning;Redundancy;Deep neural networks;channel pruning;network quantization;low resource consumption},
+  doi={10.1109/TETC.2021.3050770}}
+
+@inproceedings{NEURIPS2023_c48bc80a,
+ author = {Kuzmin, Andrey and Nagel, Markus and van Baalen, Mart and Behboodi, Arash and Blankevoort, Tijmen},
+ booktitle = {Advances in Neural Information Processing Systems},
+ editor = {A. Oh and T. Naumann and A. Globerson and K. Saenko and M. Hardt and S. Levine},
+ pages = {62414--62427},
+ publisher = {Curran Associates, Inc.},
+ title = {Pruning vs Quantization: Which is Better?},
+ url = {https://proceedings.neurips.cc/paper_files/paper/2023/file/c48bc80aa5d3cbbdd712d1cc107b8319-Paper-Conference.pdf},
+ volume = {36},
+ year = {2023}
+}
+
+@ARTICLE{10330640,
+  author={He, Yang and Xiao, Lingao},
+  journal={IEEE Transactions on Pattern Analysis and Machine Intelligence}, 
+  title={Structured Pruning for Deep Convolutional Neural Networks: A Survey}, 
+  year={2024},
+  volume={46},
+  number={5},
+  pages={2900-2919},
+  keywords={Surveys;Computational modeling;Information filters;Transformers;Filtering theory;Correlation;Convolutional neural networks;Computer vision;deep learning;neural network compression;structured pruning;unstructured pruning},
+  doi={10.1109/TPAMI.2023.3334614}}
+
+@InProceedings{10.1007/978-3-030-41964-6_40,
+author="Kluska, Piotr
+and Zi{\k{e}}ba, Maciej",
+editor="Nguyen, Ngoc Thanh
+and Jearanaitanakij, Kietikul
+and Selamat, Ali
+and Trawi{\'{n}}ski, Bogdan
+and Chittayasothorn, Suphamit",
+title="Post-training Quantization Methods for Deep Learning Models",
+booktitle="Intelligent Information and Database Systems",
+year="2020",
+publisher="Springer International Publishing",
+address="Cham",
+pages="467--479",
+abstract="In this work, we perform a comprehensive study on post-training quantization methods for convolutional neural networks in two challenging tasks: classification and object detection. Furthermore, we introduce a novel method that quantizes every single layer to the smallest bit width, which does not introduce accuracy degradation. As a result, the model layers are compressed to a variable number of bit widths preserving the quality of the model. We provide experiments on object detection and classification task and show, that our method compresses convolutional neural networks up to 87{\%} and 49{\%} in comparison to 32 bits floating-point and naively quantized INT8 baselines respectively while maintaining desired accuracy level.",
+isbn="978-3-030-41964-6"
+}
+
+@misc{nagel2021whitepaperneuralnetwork,
+      title={A White Paper on Neural Network Quantization}, 
+      author={Markus Nagel and Marios Fournarakis and Rana Ali Amjad and Yelysei Bondarenko and Mart van Baalen and Tijmen Blankevoort},
+      year={2021},
+      eprint={2106.08295},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2106.08295}, 
+}
+
+@misc{chollet2017xceptiondeeplearningdepthwise,
+      title={Xception: Deep Learning with Depthwise Separable Convolutions}, 
+      author={François Chollet},
+      year={2017},
+      eprint={1610.02357},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/1610.02357}, 
+}
+
+@article{SHANG2020105542,
+title = {Dense connection and depthwise separable convolution based CNN for polarimetric SAR image classification},
+journal = {Knowledge-Based Systems},
+volume = {194},
+pages = {105542},
+year = {2020},
+issn = {0950-7051},
+doi = {https://doi.org/10.1016/j.knosys.2020.105542},
+url = {https://www.sciencedirect.com/science/article/pii/S0950705120300411},
+author = {Ronghua Shang and Jianghai He and Jiaming Wang and Kaiming Xu and Licheng Jiao and Rustam Stolkin},
+keywords = {DSNet, Polarimetric SAR image classification, Convolutional neural networks, Depthwise separable convolution, Dense connection},
+abstract = {Convolution neural networks (CNN) have achieved great success in natural image processing where large amounts of training data are available. However, for the polarimetric synthetic aperture radar (PolSAR) image classification problem, the number of labeled training samples is typically limited. To improve the performance of CNN on limited training data, we propose a new network, the densely connected and depthwise separable convolutional neural network (DSNet). According to characteristics of PolSAR data, DSNet uses depthwise separable convolution to replace standard convolution, to independently extract features over each channel in PolSAR images. DSNet also introduces dense connections to directly connect non-adjacent layers. With the depthwise separable convolution and dense connections, DSNet can avoid extracting redundant features, reuse the hierarchical feature maps of PolSAR images and reduce the number of training parameters. Compared with normal CNN, DSNet is more lightweight and its training parameters decrease to less than 1/9. We compare DSNet against several popular algorithms on three different data sets, and show that DSNet achieves better results while using less training samples.}
+}
+
+@INPROCEEDINGS{9668607,
+  author={Guerrouj, Fatima Zahra and ABOUZAHIR, Mohamed and RAMZI, Mustapha and ABDALI, El Mehdi},
+  booktitle={2021 4th International Symposium on Advanced Electrical and Communication Technologies (ISAECT)}, 
+  title={Analysis of the acceleration of deep learning inference models on a heterogeneous architecture based on OpenVINO}, 
+  year={2021},
+  volume={},
+  number={},
+  pages={01-05},
+  keywords={Deep learning;Analytical models;Machine learning algorithms;Computational modeling;Computer architecture;Object detection;Video surveillance;deep-learning;heterogeneous architecture;FPGA;OpenVINO},
+  doi={10.1109/ISAECT53699.2021.9668607}}
+
+@ARTICLE{9525229,
+  author={Xu, Zhiyuan and Yang, Dejun and Yin, Chengxiang and Tang, Jian and Wang, Yanzhi and Xue, Guoliang},
+  journal={IEEE Transactions on Mobile Computing}, 
+  title={A Co-Scheduling Framework for DNN Models on Mobile and Edge Devices With Heterogeneous Hardware}, 
+  year={2023},
+  volume={22},
+  number={3},
+  pages={1275-1288},
+  keywords={Training;Deep learning;Computational modeling;Reinforcement learning;Throughput;Hardware;Energy efficiency;Mobile computing;edge computing;deep learning;deep reinforcement learning;on-device DNN inference},
+  doi={10.1109/TMC.2021.3107424}}
+
+@misc{tarnawski2020efficientalgorithmsdeviceplacement,
+      title={Efficient Algorithms for Device Placement of DNN Graph Operators}, 
+      author={Jakub Tarnawski and Amar Phanishayee and Nikhil R. Devanur and Divya Mahajan and Fanny Nina Paravecino},
+      year={2020},
+      eprint={2006.16423},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2006.16423}, 
+}
+
+@article{lecun1998gradient,
+  author = {Yann LeCun and Leon Bottou and Yoshua Bengio and Patrick Haffner},
+  title = {Gradient-based learning applied to document recognition},
+  journal = {Proceedings of the IEEE},
+  volume = {86},
+  number = {11},
+  pages = {2278--2324},
+  year = {1998},
+  doi = {10.1109/5.726791}
+}
+
+@inproceedings{krizhevsky2012imagenet,
+  author = {Alex Krizhevsky and Ilya Sutskever and Geoffrey E. Hinton},
+  title = {{ImageNet} classification with deep convolutional neural networks},
+  booktitle = {Advances in Neural Information Processing Systems 25},
+  pages = {1097--1105},
+  year = {2012}
+}
+
+@article{han2015learning,
+  author = {Song Han and Jeff Pool and John Tran and William J. Dally},
+  title = {Learning both weights and connections for efficient neural networks},
+  journal = {arXiv preprint arXiv:1506.02626},
+  year = {2015},
+  doi = {10.48550/arXiv.1506.02626}
+}
+
+@inproceedings{li2017pruning,
+  author = {Hao Li and Asim Kadav and Igor Durdanovic and Hanan Samet and Hans Peter Graf},
+  title = {Pruning filters for efficient {ConvNets}},
+  booktitle = {International Conference on Learning Representations},
+  year = {2017},
+  doi = {10.48550/arXiv.1608.08710}
+}
+
+@inproceedings{he2017channel,
+  author = {Yihui He and Xiangyu Zhang and Jian Sun},
+  title = {Channel pruning for accelerating very deep neural networks},
+  booktitle = {2017 IEEE International Conference on Computer Vision (ICCV)},
+  year = {2017},
+  doi = {10.1109/ICCV.2017.155}
+}
+
+@inproceedings{molchanov2017pruning,
+  author = {Pavlo Molchanov and Stephen Tyree and Tero Karras and Timo Aila and Jan Kautz},
+  title = {Pruning convolutional neural networks for resource efficient inference},
+  booktitle = {International Conference on Learning Representations},
+  year = {2017},
+  doi = {10.48550/arXiv.1611.06440}
+}
+
+@inproceedings{liu2017network,
+  author = {Zhuang Liu and Jianguo Li and Zhiqiang Shen and Gao Huang and Shoumeng Yan and Changshui Zhang},
+  title = {Learning efficient convolutional networks through network slimming},
+  booktitle = {2017 IEEE International Conference on Computer Vision (ICCV)},
+  year = {2017},
+  doi = {10.1109/ICCV.2017.298}
+}
+
+@inproceedings{luo2017thinet,
+  author = {Jian-Hao Luo and Jianxin Wu and Weiyao Lin},
+  title = {{ThiNet}: A filter level pruning method for deep neural network compression},
+  booktitle = {2017 IEEE International Conference on Computer Vision (ICCV)},
+  year = {2017},
+  doi = {10.1109/ICCV.2017.541}
+}
+
+@inproceedings{frankle2019lottery,
+  author = {Jonathan Frankle and Michael Carbin},
+  title = {The lottery ticket hypothesis: Finding sparse, trainable neural networks},
+  booktitle = {International Conference on Learning Representations},
+  year = {2019},
+  doi = {10.48550/arXiv.1803.03635}
+}
+
+@inproceedings{jacob2018quantization,
+  author = {Benoit Jacob and Skirmantas Kligys and Bo Chen and Menglong Zhu and Matthew Tang and Andrew Howard and Hartwig Adam and Dmitry Kalenichenko},
+  title = {Quantization and training of neural networks for efficient integer-arithmetic-only inference},
+  booktitle = {2018 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)},
+  year = {2018},
+  doi = {10.1109/CVPR.2018.00286}
+}
+
+@article{krishnamoorthi2018quantizing,
+  author = {Raghuraman Krishnamoorthi},
+  title = {Quantizing deep convolutional networks for efficient inference: A whitepaper},
+  journal = {arXiv preprint arXiv:1806.08342},
+  year = {2018},
+  doi = {10.48550/arXiv.1806.08342}
+}
+
+@inproceedings{demidovskij2019openvino,
+  author = {Alexander Demidovskij and Yury Gorbachev and Mikhail Fedorov and Iliya Slavutin and Artyom Tugarev and Marat Fatekhov and Yaroslav Tarkan},
+  title = {{OpenVINO} Deep Learning Workbench: Comprehensive Analysis and Tuning of Neural Networks Inference},
+  booktitle = {2019 IEEE/CVF International Conference on Computer Vision Workshop (ICCVW)},
+  year = {2019},
+  doi = {10.1109/ICCVW.2019.00104}
+}
+
+@inproceedings{eshratifar2019bottlenet,
+  author = {Amir Erfan Eshratifar and Amirhossein Esmaili and Massoud Pedram},
+  title = {{BottleNet}: A deep learning architecture for intelligent mobile cloud computing services},
+  booktitle = {2019 IEEE/ACM International Symposium on Low Power Electronics and Design (ISLPED)},
+  year = {2019},
+  doi = {10.1109/ISLPED.2019.8824955}
+}
+
+@article{eshratifar2021jointdnn,
+  author = {Amir Erfan Eshratifar and Mohammad Saeed Abrishami and Massoud Pedram},
+  title = {{JointDNN}: An efficient training and inference engine for intelligent mobile cloud computing services},
+  journal = {IEEE Transactions on Mobile Computing},
+  year = {2021},
+  doi = {10.1109/TMC.2019.2947893}
+}
+
+@article{williams2009roofline,
+  author = {Samuel Williams and Andrew Waterman and David Patterson},
+  title = {Roofline: An insightful visual performance model for multicore architectures},
+  journal = {Communications of the ACM},
+  volume = {52},
+  number = {4},
+  pages = {65--76},
+  year = {2009},
+  doi = {10.1145/1498765.1498785}
+}

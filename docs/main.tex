@@ -1,0 +1,391 @@
+\documentclass[conference]{IEEEtran}
+
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amsfonts}
+\usepackage{graphicx}
+\usepackage{cite}
+\usepackage{url}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage[caption=false,font=footnotesize]{subfig}
+\usepackage{tabularx}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=black
+}
+
+\newcommand{\reportfigure}[4]{%
+\begin{figure}[t]
+\centering
+\IfFileExists{#1}{%
+    \includegraphics[width=\linewidth]{#1}%
+}{%
+    \fbox{\parbox[c][1.45in][c]{0.95\linewidth}{\centering\footnotesize
+    Insert figure\\[0.35em]
+    File: \texttt{\detokenize{#1}}\\[0.45em]
+    Intended content: #4}}%
+}
+\caption{#2}
+\label{#3}
+\end{figure}%
+}
+
+\newcommand{\reportfigurestar}[4]{%
+\begin{figure*}[t]
+\centering
+\IfFileExists{#1}{%
+    \includegraphics[width=0.96\textwidth]{#1}%
+}{%
+    \fbox{\parbox[c][1.75in][c]{0.92\textwidth}{\centering\footnotesize
+    Insert figure\\[0.35em]
+    File: \texttt{\detokenize{#1}}\\[0.45em]
+    Intended content: #4}}%
+}
+\caption{#2}
+\label{#3}
+\end{figure*}%
+}
+
+\title{Hardware-Aware CNN Reduction, Heterogeneous Inference Serving, and Benchmarking on Intel Lunar Lake AI PC}
+
+\author{%
+\IEEEauthorblockN{Ritik Agarwal}
+\IEEEauthorblockA{%
+MTech DSBA\\
+Indian Institute of Science, Bengaluru\\
+ritikagarwal@iisc.ac.in
+}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This work introduces a hardware-optimized deployment framework for CNNs on Intel Lunar Lake AI PC systems. The pipeline consists of three core components: a training system for model pruning and quantization, an inference server that runs a single OpenVINO model across all available hardware, and a benchmarking tool to measure performance on the CPU, GPU, and NPU. To ensure predictable performance and avoid runtime delays, the design uses "structured pruning" to physically shrink the model rather than relying on sparse masking. Additionally, the study finds that automatically distributing tasks across all available devices improves total throughput more effectively than using a single device when multiple requests are processed at once. By analyzing detailed performance metrics, this research provides a practical blueprint for maximizing AI efficiency on modern, heterogeneous PC hardware.
+\end{abstract}
+
+\begin{IEEEkeywords}
+CNN optimization, structured pruning, quantization, OpenVINO, heterogeneous inference, Intel Lunar Lake, AI PC, benchmarking
+\end{IEEEkeywords}
+
+\section{Introduction}
+Modern edge and client systems contain heterogeneous compute resources, typically a combination of CPU cores, integrated GPUs, and dedicated neural processing units (NPU). These devices offer very different latency, throughput, and energy trade-offs. A CNN deployment that treats them as interchangeable accelerators usually underutilizes these devices: small models fail to saturate accelerators, large models may remain memory-bound on general-purpose cores, and naive placement strategies can spend more time moving data than computation.
+
+This work addresses that gap through an end-to-end pipeline for hardware-aware CNN deployment on Intel Lunar Lake AI PC hardware. The pipeline begins with a PyTorch model, reduces its compute cost through structured pruning and quantization \cite{li2017pruning,he2017channel,jacob2018quantization,krishnamoorthi2018quantizing}, exports the result to OpenVINO \cite{demidovskij2019openvino}, serves the optimized model through a unified inference API, and finally benchmarks the system at both model and server level. Additionally, the toolkit centers around a reusable model abstraction that hides most of the OpenVINO setup while still exposing the model-specific preprocessing, datasets, and training logic required for accurate evaluation. This allows the toolkit to adapt to any CNN that extends the provided model abstraction.
+
+Preliminary evaluation on the target platform showed that splitting layers of a single CNN across CPU, GPU, and NPU is not effective in practice because intermediate activation movement becomes constrained by the limited bandwidth between devices. The system therefore pivots from \emph{layer scheduling within one request} to \emph{request scheduling across replicated whole-model instances}. Each device hosts a full compiled model, and the server distributes incoming requests across those instances. This preserves the complete hardware-utilization goal but avoids inter-device memory transfers.
+
+The implemented system makes four concrete contributions.
+\begin{itemize}
+\item A reusable \texttt{BaseModel\_AIPC} abstraction class that allows a Torch CNN to plug into training, export, inference, and benchmarking with minimal boilerplate.
+\item A training harness that searches for an optimal structured pruning ratio through a binary-search loop with staged accuracy gates, then exports dense, pruned, and quantized variants for downstream use.
+\item A heterogeneous inference server that compiles one OpenVINO model per available device and schedules incoming work through a pull-based producer-consumer pipeline with automatic batching.
+\item A benchmark harness that measures both isolated model performance and end-to-end server throughput, while also collecting layer-level metrics that explain the observed trends.
+\end{itemize}
+
+The rest of the paper follows the same order in which the system is actually used. It first summarizes the most relevant background, then presents the methodology for model reduction, serving, and benchmarking, and finally discusses the experimental results and future extensions.
+
+\section{Related Work}
+Pruning and quantization remain the two most practical ways to reduce CNN deployment cost without redesigning the architecture \cite{han2015learning,jacob2018quantization,krishnamoorthi2018quantizing}. In this setting, structured pruning is more useful than unstructured sparsity because it removes full channels or neurons and produces smaller dense tensors that standard runtimes can execute efficiently \cite{li2017pruning,he2017channel,molchanov2017pruning,liu2017network,luo2017thinet}.
+
+Quantization provides a second optimization axis by reducing model size and lowering memory pressure \cite{jacob2018quantization,krishnamoorthi2018quantizing}. Its gains, however, depend strongly on backend support and workload characteristics. For that reason, quantization in this work is treated as a deployable artifact that must be measured on each device rather than assumed to help automatically.
+
+The Lottery Ticket Hypothesis offers a simple intuition for the pruning flow used here: some subnetworks recover better when they are trained again from the original dense weights \cite{frankle2019lottery}. The implementation follows that idea in a practical form. Each pruning trial starts from the dense checkpoint instead of continuing from a previously pruned state, so recovery is always tied back to the original model weights.
+
+Prior work on heterogeneous inference also studies per-layer device placement and model partitioning \cite{eshratifar2021jointdnn,eshratifar2019bottlenet}. On AI PC platforms, that approach becomes less attractive once intermediate activations must move repeatedly across device boundaries. This work therefore keeps each inference graph on one device and uses heterogeneity at the request level, where independent requests can be served concurrently across CPU, GPU, and NPU.
+
+\section{Methodology}
+This section describes the system in the same order as the deployment flow: model preparation through the training harness, request execution through the inference server, and evaluation through the benchmark harness.
+
+\subsection{Training Harness}
+The training harness operates on a base model class abstraction rather than one any particular CNN. This keeps the reduction pipeline consistent across models while allowing each architecture to define its own preprocessing and datasets.
+
+\subsubsection{Model Abstraction and OpenVINO Interface}
+The central design choice is the \texttt{BaseModel\_AIPC} class. It acts as the bridge between PyTorch training code and OpenVINO deployment code \cite{demidovskij2019openvino}. Each child class initializes a Torch model, an example input tensor, and model-specific logic for preprocessing, dataset loading, and training configuration. The base class then handles model caching, OpenVINO conversion, OpenVINO compilation, asynchronous inference requests, accuracy evaluation, and extracts model's architectural metrics. Table~\ref{tab:base-model} summarizes the responsibilities carried by this interface.
+
+This abstraction is important for making the toolkit model agnostic. A new CNN can enter the pipeline without changing the pruning loop, the server controllers, or the benchmarking scripts. The model author mainly needs to provide the hooks that are genuinely architecture-specific: how raw images are converted into tensors, the training dataset, and how optimization is configured. Everything else, including artifact export and inference object setup, is inherited.
+
+\begin{table}[t]
+\caption{Responsibilities of \textbf{BaseModel AIPC}}
+\label{tab:base-model}
+\centering
+\begin{tabularx}{\columnwidth}{|>{\raggedright\arraybackslash}p{0.24\columnwidth}|X|}
+\hline
+Component & Role in the project \\
+\hline 
+\texttt{Model state} & Preserve an immutable dense reference model while allowing temporary working copies for pruning, fine-tuning, export, and benchmarking. \\
+\hline
+\texttt{OV IR / compile} & Convert or load an OpenVINO IR, reshape it to a fixed batch size, and compile it for a target device. \\
+\hline
+\texttt{Preprocess} & Convert raw images into the exact tensor format expected by the network. This keeps the server and benchmark logic model-agnostic. \\
+\hline
+\texttt{Dataset loading} & Attach the correct dataset and dataloader logic to each model family. \\
+\hline
+\texttt{Training setup} & Configure optimizer, loss, and target device, then execute a reusable fine-tuning epoch. \\
+\hline
+\texttt{Accuracy eval} & Measure either Torch-side or OpenVINO-side accuracy using a pipelined request loop. \\
+\hline
+\texttt{Analytics} & Store layer-level MACs, memory traffic, arithmetic intensity, and device support for downstream analysis. \\
+\hline
+\end{tabularx}
+\end{table}
+
+\subsubsection{Dense Baseline Training and Model Artifact Management}
+The training script begins by parsing the requested model, dataset batch size, device, and reduction mode. It then resolves the preferred Torch training device, instantiates the corresponding AIPC model class, and loads the train and validation datasets. If the user requests dense training, the script runs a standard training loop and measures the resulting baseline accuracy. Otherwise, it loads an existing model and evaluates that baseline directly. The accuracy evaluation function is inherited from the \texttt{BaseModel\_AIPC} class.
+
+Once the dense baseline is established, the harness snapshots the current model into \texttt{init\_model}. This is essential as the reduction stages should always start from a known dense checkpoint, not from whatever pruned or quantized working state the model was left in during previous runs. By keeping the dense reference model separate from the mutable working copy, the script can restart pruning or quantization cleanly and can return to the best checkpoint later in the search.
+
+The dense model is also exported as a reproducible artifact. The project therefore produces a complete family of model files under the \texttt{models/} directory: the dense model, the pruned model, and the quantized model. These artifacts are then used by the server and the benchmark harness, which keeps the evaluation path aligned with the training path.
+
+\subsubsection{Why Structured Pruning Was Chosen}
+The pruning strategy in this project is intentionally structured rather than sparse \cite{han2015learning,li2017pruning,he2017channel,molchanov2017pruning,liu2017network,luo2017thinet}. AI PCs and current OpenVINO backends are much better at executing dense tensors with reduced channel counts than they are at benefiting from arbitrary weight sparsity. While specialized hardware has efficient kernels for sparse tensors, the toolkit is targeted towards edge devices, which may not have this optimization. Structured channel pruning changes the actual tensor dimensions of the network, which directly reduces compute, memory traffic, and the size of the exported graph.
+
+The harness uses \texttt{torch\_pruning} with magnitude-based importance scores to prune the model. The last layer is explicitly excluded from pruning, so the output dimension remains unchanged. This matches the deployment requirement that the classifier must continue to emit the same number of classes after reduction. The pruner is also configured with \texttt{round\_to=8}, which nudges the resulting channel counts toward hardware-friendly sizes. Since the pruning is structural, the downstream model has smaller internal layers and a correspondingly smaller OpenVINO representation. That decision is one of the main reasons the training harness integrates cleanly with the server and the benchmarking flow.
+
+\subsubsection{Binary Search with Accuracy Gates}
+The pruning harness is designed to reduce training time while still finding a strong pruning ratio. A naive sweep over many pruning ratios would be expensive, especially when each candidate must be fine-tuned to recover lost accuracy. Instead, the script uses a staged search process.
+
+Let the dense baseline accuracy be $a_0$. The final acceptable accuracy target used for the reduced model is defined as
+\begin{equation}
+a_{\min} = 0.975 a_0,
+\end{equation}
+which corresponds to a tolerance of roughly \(2.5\%\) relative loss. During the ratio search itself, the harness uses a more relaxed gate
+\begin{equation}
+a_{\text{search}} = 0.9 a_{\min},
+\end{equation}
+so poor pruning ratios can be rejected early without spending full training time on them.
+
+The search procedure is as follows.
+\begin{enumerate}
+\item A dense checkpoint is restored from \texttt{init\_model}, ensuring that every pruning trial starts from the same baseline.
+\item The training and validation loaders are temporarily replaced by \(25\%\) of the original data. This makes the search stage much cheaper than full-dataset fine-tuning.
+\item A midpoint ratio between the current lower and upper search bounds is selected.
+\item The model is structurally pruned at that ratio, evaluated once immediately, and then fine-tuned for a short quick-probe phase.
+\item If the quick probe reaches the relaxed accuracy gate, the ratio is considered feasible and the model is more aggressively pruned.
+\item If the quick probe fails, an extended fine-tuning phase is run. If that extended recovery still fails, the search moves downward toward a smaller ratio.
+\item The best successful checkpoint is stored as a detached CPU snapshot so that the final full-data pass can resume from the most promising reduced model.
+\end{enumerate}
+
+Because every candidate ratio is evaluated only after restoring the dense checkpoint, the search follows the lottery-ticket intuition discussed in Section~II \cite{frankle2019lottery}. Figure~\ref{fig:training-search} summarizes the full loop.
+
+The result is a binary-search style pruning loop with accuracy checks at each stage. It is faster than exhaustive search, more stable than jumping directly to a single aggressive ratio, and easier to explain than a fully adaptive pruning schedule. This is the main algorithmic contribution of the training harness.
+
+\reportfigurestar{pruning-flow.png}{Training harness pruning search flow.}{fig:training-search}{The figure should show a dense baseline leading into subset-based ratio search, quick accuracy probes, extended recovery when necessary, and a final full-data refinement run at the best recovered pruning ratio.}
+
+\subsubsection{Final Fine-Tuning and Quantization}
+After the subset search ends, the harness restores the full training and validation loaders and resumes from the best stored checkpoint. A final fine-tuning pass is then run with the stricter target accuracy, resulting in the pruned model that is exported. The script also logs search statistics such as the tested ratios, quick-probe accuracies, extended accuracies, epochs used, and model statistics into a CSV file. This makes the reduction process easier to track and allows later comparison between search behavior and final runtime speedups.
+
+Quantization is implemented as a separate reduction mode using TorchAO weight-only INT8 quantization \cite{jacob2018quantization,krishnamoorthi2018quantizing}. The quantized model is exported in both Torch and OpenVINO formats so it can go through the same benchmarking process as the dense and pruned variants.
+
+\subsection{Inference Server}
+The inference server is built for two purposes: hardware transparency and model transparency. Hardware transparency means that clients should not need to know the details of OpenVINO compilation or the exact set of devices available on a machine. Model transparency means that the controllers should remain largely unchanged when a new Torch model is added to the system, given that it extends the AIPC model interface.
+
+\subsubsection{Startup and Device-Agnostic Model Loading}
+The FastAPI application loads the full serving stack during startup. The configuration layer resolves the model name, model type, bind address, and ignored devices from command-line arguments or environment variables. Device discovery is performed through \texttt{ov.Core().available\_devices}, so the same server design can run anywhere OpenVINO runs, not only on one fixed Lunar Lake configuration \cite{demidovskij2019openvino}.
+
+At startup, the model registry loads one instance of the selected model for each available device. The current implementation also assigns a device-specific static batch size, with defaults of 8 for CPU, 64 for GPU, and 16 for NPU. These values were chosen empirically after repeated throughput experiments so that each device can remain busy under load without pushing the batch so high that static padding wastes compute when the batch is not full. Each model is compiled once with a throughput-oriented OpenVINO configuration, and the optimal number of infer requests reported by OpenVINO is stored for later use. This produces one compiled model per device, but all of them expose the same API behavior shown in Fig.~\ref{fig:server-architecture} with a single entrypoint.
+
+\reportfigurestar{infer-server-arch.png}{Inference server architecture.}{fig:server-architecture}{FastAPI request handling, the shared request queue, per-device targeted queues, one \texttt{DeviceQueue} consumer thread per device, one \texttt{DeviceEngine} backed by an OpenVINO \texttt{AsyncInferQueue} per device, and callback-based result delivery back to the HTTP layer.}
+
+\subsubsection{Producer-Consumer Pull Model}
+The core scheduling idea is a pull-based producer-consumer model. The HTTP inference controllers act as the producers. The consumer is a dedicated \texttt{DeviceQueue} thread for each device.
+
+When a request reaches the server with one or more images, the controller first decodes the input images and applies model-specific preprocessing using the function in the loaded model class. The controller then creates one \texttt{InferJob} per image. Each job includes the input tensor, a \texttt{future} for synchronization, and an optional preferred device. The jobs are enqueued, and the controller waits for the futures to resolve.
+
+The request queue has two levels. Jobs without a preferred device are placed into a shared FIFO queue, while device-pinned work is placed into a device-specific targeted queue. Each device consumer always checks its targeted queue first (non-blocking) and then falls back to the shared queue. This design preserves user intent when a device is explicitly requested, yet still allows unpinned work to be stolen by whichever device becomes available first.
+
+The decision to use a pull model, instead of a single dispatcher push model, was a conscious one. The pull model naturally adapts to the fact that the CPU, GPU, and NPU have different preferred batch sizes and different amounts of parallel in-flight work capacity. The device that becomes free first simply continues draining work, which helps keep the aggregate system busy.
+
+\subsubsection{Automatic Batching and Engine Saturation}
+Automatic batching is handled locally inside each \texttt{DeviceQueue}. Once a device thread dequeues the first request for a batch, it tries to accumulate additional requests up to the device's static batch size. The algorithm has two paths.
+
+\begin{enumerate}
+\item \textbf{Eager path:} if the queue depth is already sufficient to fill the remaining slots in the batch, the consumer drains the extra jobs immediately using non-blocking queue reads. This avoids unnecessary timeout overhead when demand is high.
+\item \textbf{Slow path:} if there are not yet enough jobs to fill the batch, the consumer waits for a short batching timeout, currently 100~ms, to allow straggling requests to join the batch.
+\end{enumerate}
+
+If the batch is still incomplete when the timeout expires, the consumer zero-pads the input tensor to the compiled batch size and submits the full static batch anyway. The batch metadata records how many rows are real images and how many are padding. After execution, the OpenVINO callback writes back only the real outputs to the corresponding job futures.
+
+\reportfigure{auto-batching-flow.png}{Pull-based batching timeline for one device queue.}{fig:pull-batching}{The final figure should show the targeted-queue check, shared-queue fallback, fast fill when the queue is deep, short waiting for stragglers when the queue is shallow, and repeated submissions until the device infer queue reaches capacity.}
+
+Each device queue submits its completed batch to a \texttt{DeviceEngine}. The engine is like a thin submission layer in front of OpenVINO's \texttt{AsyncInferQueue}, which can be viewed as a bank of infer-request slots for that device. If one slot is free, another batch can be launched immediately. When a batch finishes, OpenVINO triggers an asynchronous callback. That callback copies the valid rows, records the device that executed the batch, and resolves the futures belonging to the original API requests. This is what keeps scheduling transparent: the HTTP layer waits only on futures, while device selection, batch formation, execution, and completion routing all happen in the background.
+
+Once a device consumer thread has submitted an initial job, it enters a tight inner loop that repeatedly submits batches to saturate the device's infer-request pool. Because this batching loop runs on a dedicated background thread per device, it can accumulate and dispatch work independently of the HTTP request handlers and without contending with other devices. The result is that each device's infer-request pool is refilled as quickly as possible, minimizing idle cycles on the accelerator.
+
+This is the main reason the server can attempt to keep every device fully populated under enough load. Queue depth determines how full a batch can become, while the OpenVINO infer-request pool determines how many batches can run in parallel.
+
+
+\subsubsection{Why Static Shapes and Static Batches Are Used}
+The server deliberately relies on static shapes and fixed per-device batch sizes. Every model is reshaped during startup before compilation, and the serving layer never changes tensor shapes at runtime. Incomplete batches are padded rather than recompiled.
+
+This choice is motivated by performance stability. Dynamic shapes can trigger graph recompilation or shape-specialization costs that are difficult to reason about in a serving system. Static shapes make latency more predictable and ensure that the optimized OpenVINO graph remains reusable. Static batching also depends on choosing a batch size that is large enough to utilize available compute but not so large that padding dominates under realistic queue depths. The current configuration was selected to strike that balance after repeated experiments across devices and request rates.
+
+\subsubsection{End-to-End Request Flow}
+From the API perspective, the server exposes both single-image and multi-image endpoints in JSON and multipart form. Internally, both modes collapse to the same flow.
+
+\begin{enumerate}
+\item Decode images from base64 or uploaded bytes.
+\item Use the model abstraction to preprocess each image into a tensor with batch dimension one.
+\item Create one \texttt{InferJob} per image and enqueue it with either an explicit device hint or auto placement.
+\item Wait on all job futures concurrently without blocking the FastAPI event loop.
+\item Receive results from the per-device OpenVINO callbacks, postprocess the logits into top-\(k\) predictions, and return the device assignment together with latency.
+\end{enumerate}
+
+This flow is transparent for both hardware and models. Clients do not need to know whether the result came from CPU, GPU, or NPU unless they care to inspect the response. Likewise, the controller code does not need to know what model is being served.
+
+\subsection{Benchmark Harness and Evaluation Protocol}
+The benchmarking flow has two main goals. First, it measures raw model performance outside the HTTP server, so throughput, latency, and layer statistics can be analyzed in isolation. Second, it measures end-to-end server performance under concurrent request load to realize the benefit of auto-device scheduling.
+
+\subsubsection{Standalone Model Benchmarking}
+The offline benchmark harness iterates over devices, models, model types, batch sizes, and benchmark methods. Two methods are currently supported.
+
+\begin{enumerate}
+\item \textbf{Real-data benchmarking:} raw images are loaded, preprocessed through the model-specific pipeline, and sent through the model's \texttt{predict\_batch} path after a warm-up run. The benchmark then records throughput and latency statistics across repeated batches.
+\item \textbf{OpenVINO benchmark\_app:} the selected model is serialized to OpenVINO IR, then benchmarked through OpenVINO's built-in benchmarking utility with detailed counters enabled. This yields per-layer execution reports in addition to top-level latency and throughput statistics.
+\end{enumerate}
+
+The harness clears caches between runs as far as the operating system allows, logs the full benchmark configuration, and stores all results in CSV format. Because the same flow is used for dense, pruned, and quantized variants, the comparison remains easy to analyze. Table~\ref{tab:benchmark-outputs} summarizes the metrics gathered from these runs.
+
+\subsubsection{Layer-Level Metrics Extraction}
+The benchmark harness does not rely only on end-to-end latency. It also extracts per-layer architectural metrics from the OpenVINO graph. For convolution and linear layers, the toolkit computes MAC counts, estimated memory traffic, arithmetic intensity, and the list of devices that report support for each layer.
+
+These analytics are useful because they help explain why some optimizations help on one device but not on another. A large, high-intensity convolution is a good candidate for acceleration, while a small layer with little compute may not justify transfer or queueing overhead.
+
+In addition, a pruner has been integrated that can remove channels or neurons whose weights are entirely zero before benchmarking and then regenerate the OpenVINO IR. This ensures that the benchmarked model reflects the physically smaller graph when the model has sparse tensors.
+
+\begin{table}[t]
+\caption{Benchmark outputs produced by the harnesses}
+\label{tab:benchmark-outputs}
+\centering
+\begin{tabularx}{\columnwidth}{>{\raggedright\arraybackslash}p{0.28\columnwidth}X}
+\toprule
+Output & Interpretation \\
+\midrule
+Throughput (FPS) & Aggregate images processed per second for a given device, model variant, and batch size. \\
+Latency statistics & Median, average, minimum, and maximum batch latency for the offline model benchmark. \\
+Detailed counters & Per-layer execution information from OpenVINO \texttt{benchmark\_app}. \\
+Architectural metrics & MACs, memory traffic, arithmetic intensity, and estimated energy used to interpret bottlenecks. \\
+Server round-trip FPS & Client-observed performance including HTTP overhead, queueing delay, and device execution. \\
+Server device FPS & Throughput estimated from device-side latency values returned by the server responses. \\
+Device distribution & Number of images ultimately executed on CPU, GPU, and NPU under a given scheduling policy. \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsubsection{Inference Server Benchmarking}
+The server benchmark pre-generates random JPEG images, packages them into either single-image or batched JSON requests, and then fires those requests with controlled concurrency to the HTTP API. As each response arrives, the benchmark immediately submits the next pending request, which keeps the request pipeline full until the total workload is exhausted.
+
+This harness reports three related but distinct throughput views.
+\begin{enumerate}
+\item \textbf{Effective FPS:} total images divided by wall-clock runtime for the full benchmark, including all server-side overhead.
+\item \textbf{Inference FPS:} total images divided by wall-clock time minus the cumulative server-side preprocessing and postprocessing latency, isolating the scheduling and device execution contribution from the image decode and tensor conversion cost.
+\item \textbf{Round-trip FPS:} total images divided by the sum of individual request round-trip times, reflecting the per-request view of performance including HTTP and queueing overhead.
+\end{enumerate}
+
+These metrics make it possible to separate server overhead from pure execution cost. In the figures that follow, Inference FPS is used as the primary throughput metric because it excludes the preprocessing contribution that is independent of the scheduling policy. If the shared pull-based queue behaves as intended, the auto mode should produce the highest inference throughput whenever there is enough outstanding work to keep multiple devices busy simultaneously.
+
+\section{Results and Discussion}
+This section summarizes the main findings from the model and server benchmarks. It moves from model size reduction to device-level throughput, and then to server scheduling behaviour and roofline-based analysis.
+
+\subsection{Model Reduction Across Dense, Pruned, and Quantized Variants}
+Table~\ref{tab:model-reduction} summarizes the exported model artifacts for LeNet and AlexNet \cite{lecun1998gradient,krizhevsky2012imagenet}. Structured pruning provides a significant reduction in MAC count because channels are physically removed from the graph. In the current implementation, the quantized model is produced from the pruned model rather than from the dense baseline. As a result, quantization preserves the reduced MACs and mainly adds a further storage reduction on top of the pruned graph.
+
+\begin{table}[t]
+\caption{Model reduction summary across exported variants}
+\label{tab:model-reduction}
+\centering
+\begin{tabularx}{\columnwidth}{>{\raggedright\arraybackslash}p{0.18\columnwidth}>{\raggedright\arraybackslash}p{0.19\columnwidth}>{\raggedleft\arraybackslash}p{0.15\columnwidth}>{\raggedleft\arraybackslash}p{0.15\columnwidth}>{\raggedleft\arraybackslash}X}
+\toprule
+Model & Variant & Acc. (\%) & Size (MB) & MACs \\
+\midrule
+LeNet & Dense & 98.7 & 0.24 & 41.7M \\
+LeNet & Pruned & 98.4 & 0.04 & 29.4M \\
+LeNet & Quantized & 98.4 & 0.02 & 29.4M \\
+AlexNet & Dense & 50.1 & 233.1 & 0.714G \\
+AlexNet & Pruned & 49.0 & 169.3 & 0.508G \\
+AlexNet & Quantized & 49.0 & 47.3 & 0.508G \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{Device-Normalized Throughput}
+Figure~\ref{fig:device-throughput} compares throughput across CPU, GPU, and NPU after normalizing each configuration to the CPU throughput of the same model variant and batch size. For each model at the largest batch size, two variant groups are shown: \emph{dense} and \emph{pruned + quantized}.
+
+The figure shows that the accelerator advantage grows with workload intensity: the larger and more compute-dense AlexNet configurations benefit more strongly from GPU and NPU execution than the smaller LeNet configurations. It also shows that pruning improves throughput on every device by reducing the cost of the dominant layers, while quantized execution adds further gains for backends that efficiently support lower precisions.
+
+\reportfigure{fig_device_throughput_normalized.png}{Throughput normalized to CPU baseline at the largest batch size for dense and pruned + quantized variants.}{fig:device-throughput}{Normalized throughput across devices for dense and pruned + quantized variants at batch size~16.} 
+
+\subsection{Inference Server Scheduling Results}
+Figure~\ref{fig:server-auto} compares auto-device scheduling against requests pinned to CPU, GPU, and NPU individually. The chart plots only \emph{Inference FPS} (total images divided by wall-clock time minus server-side preprocessing latency), because this most directly captures scheduling and device execution behaviour. Bars are grouped by scheduling mode, with one bar per model.
+
+Under sufficient request concurrency, the auto mode delivers the highest inference throughput because the shared queue keeps all three devices active simultaneously while still respecting pinned requests. Table~\ref{tab:server-distribution} shows the corresponding device distribution for a representative run and confirms that the shared pull model naturally shifts work toward whichever device clears its local queue fastest.
+
+\reportfigure{fig_server_auto_vs_pinned.png}{Inference server throughput comparison for auto-device selection and requests pinned to CPU, GPU, and NPU.}{fig:server-auto}{Inference FPS for auto-device scheduling and pinned execution modes, grouped by model when available.}
+
+\begin{table}[t]
+\caption{Representative device distribution for auto-scheduled server inference}
+\label{tab:server-distribution}
+\centering
+\begin{tabularx}{\columnwidth}{>{\raggedright\arraybackslash}p{0.28\columnwidth}>{\raggedleft\arraybackslash}p{0.18\columnwidth}>{\raggedleft\arraybackslash}X}
+\toprule
+Device & Images served & Share (\%) \\
+\midrule
+CPU & 5964 & 18.2 \\
+GPU & 15578 & 47.5 \\
+NPU & 11226 & 34.3 \\
+\bottomrule
+    \end{tabularx}
+\end{table}
+
+\subsection{Layer Speedup and Roofline Interpretation}
+Figure~\ref{fig:layer-heatmaps} provides the layer-level explanation for the end-to-end throughput trends. For each convolution layer instance, the speedup is computed as the ratio of CPU execution time $t_{\text{CPU}}$ to accelerator execution time $t_{\text{accel}}$, both obtained from the detailed counters emitted by OpenVINO \texttt{benchmark\_app}. To avoid clutter, the chart shows only the top 5 layers ranked by compute volume (MACs) for each model. The chart is restricted to dense models so baseline device behavior is visible before reduction.
+
+The largest speedups over CPU are concentrated in layers with high MAC counts and moderate-to-high arithmetic intensity, which is expected on GPU and NPU accelerators. The top-5 filtering preserves the most compute-intensive layers while improving readability.
+
+\reportfigure{fig_layer_speedup_heatmaps.png}{Layer speedup heatmap for the top 5 compute-intensive convolution layers by MAC count, showing GPU/CPU and NPU/CPU speedup on the dense model variant.}{fig:layer-heatmaps}{Color-coded heatmap of GPU/CPU and NPU/CPU speedup for the top 5 convolution layers by MAC count on the dense model.}
+
+\subsubsection{CPU/GPU Roofline-Style Summary}
+The roofline model \cite{williams2009roofline} is a performance framework that bounds the achievable throughput of a kernel by two hardware limits: \emph{peak compute throughput} (the maximum floating-point operations per second the device can sustain) and \emph{peak memory bandwidth} (the maximum rate at which data can move between compute units and memory). Every layer of the network has an \emph{arithmetic intensity}~$I$ defined as the ratio of floating-point operations to bytes of memory traffic:
+\begin{equation}
+  I = \frac{\text{FLOPs}}{\text{Bytes transferred}}.
+\end{equation}
+
+Figure~\ref{fig:roofline-devices} focuses on the dense-model CPU and GPU runs. For each \{model, device\} pair, the chart keeps the top two batch sizes ranked by achieved performance, so the figure still shows how batching shifts the operating point without becoming overcrowded. The X-axis is the weighted arithmetic intensity calculated from the most important convolution and linear layers (highest MACs), while the Y-axis is the achieved performance in GFLOP/s.
+
+The achieved-throughput definition for a layer is
+\begin{equation}
+  T_{\text{achieved}} = \frac{\text{MACs}}{t_{\text{exec}}},
+\end{equation}
+where MACs are multiply-accumulate operations and $t_{\text{exec}}$ is measured execution time. Both axes use logarithmic scales, so the figure preserves the memory-versus-compute interpretation while remaining readable.
+
+Low-intensity models cluster closer to the memory-bound region, where CPU performance remains competitive because there is not enough compute work to justify accelerator offloading overhead. Higher-intensity models move toward the top-right compute-bound part of the graph, which is consistent with GPU execution benefiting most on the layers and batch sizes that expose sufficient parallel work.
+
+\reportfigure{fig_roofline_devices.png}{CPU/GPU roofline-style summary for dense models, showing the top two batch sizes per model-device pair by achieved performance.}{fig:roofline-devices}{Roofline-style summary with CPU and GPU points for dense models, annotated by batch size.}
+
+Taken together, Figs.~\ref{fig:layer-heatmaps} and \ref{fig:roofline-devices} explain why the system-level trends appear as they do. The layer speedup chart identifies which layers benefit from acceleration, the roofline plots explain the compute-versus-memory requirements of the model configurations, and the server benchmarks show how that behaviour translates into end-to-end throughput once full-model instances are scheduled concurrently.
+
+\section{Conclusion}
+This work delivers an end-to-end pipeline from Torch model to reduced artifact, from reduced artifact to heterogeneous OpenVINO serving, and from serving to repeatable performance analysis. Its main value lies in the way those stages are stitched together to be hardware agnostic and produce results, along with important insights to explain those results.
+
+The main achievement of this project is not just one optimization, but the overall system design. By combining structured pruning, well-tuned static batching, asynchronous request handling, and hardware-aware benchmarking, it offers a practical and flexible approach for running CNNs on AI PCs.
+
+\section{Future Work}
+Several directions can strengthen the final system without changing its core architecture.
+
+\begin{enumerate}
+\item Introduce a learned pruning-ratio ML model that uses the outcomes of previous search trials to prioritize promising ratios before expensive fine-tuning.\
+\item Evaluate quantization-aware training or calibration-based flows where weight-only INT8 quantization is insufficient to retain accuracy.
+\item Integrate Layer Adaptive Sparsity to prune different layers with different pruning ratios. This can help achieve better accuracy after pruning, while also enhancing performance.
+\item Add richer server observability, such as queue occupancy traces, per-device utilization timelines, and padding ratios during batching.
+\item Add optional external power telemetry integration so package-level or wall-level energy can be aligned with the existing benchmark logs when such measurements are required.
+\item Package the full toolkit with a more sophisticated command-line interface so a user can register a new Torch model and generate dense, pruned, quantized, served, and benchmarked artifacts from one entry point.
+\end{enumerate}
+
+\bibliographystyle{IEEEtran}
+\bibliography{refs}
+
+\end{document}

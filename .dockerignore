@@ -1,0 +1,30 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+.git/
+.gitignore
+.vscode/
+.idea/
+
+openvino_env/
+final-results/
+logs/
+
+# Ignore large raw datasets and keep mounted datasets via volumes when needed
+data/MNIST/
+data/timm___mini-imagenet/
+data/zh-plus___tiny-imagenet/
+
+# LaTeX/docs build artifacts
+docs/*.aux
+docs/*.bbl
+docs/*.bcf
+docs/*.blg
+docs/*.fdb_latexmk
+docs/*.fls
+docs/*.log
+docs/*.out
+docs/*.run.xml
+docs/*.toc
