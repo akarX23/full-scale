@@ -15,6 +15,25 @@ import os
 import openvino.properties.hint as hints
 import openvino.properties as props
 
+_CPU_THREAD_TUNED = False
+
+
+def _configure_cpu_training_threads(device: str) -> None:
+    global _CPU_THREAD_TUNED
+    if str(device).upper().split(":", 1)[0] != "CPU":
+        return
+    if _CPU_THREAD_TUNED:
+        return
+
+    cpu_cores = os.cpu_count() or 1
+    torch.set_num_threads(cpu_cores)
+    try:
+        torch.set_num_interop_threads(cpu_cores)
+    except RuntimeError:
+        # Inter-op threads can only be configured once in some runtimes.
+        pass
+    _CPU_THREAD_TUNED = True
+
 class LeNet(nn.Module):
     """LeNet-5 style architecture for 32×32 grayscale input (10 classes)."""
 
@@ -44,9 +63,31 @@ def extract_model_analytics(model: ov.Model, core: ov.Core, bytes_per_element=4)
     
     layer_metrics = []
 
-    npu_support = core.query_model(model, "NPU")
-    gpu_support = core.query_model(model, "GPU")
-    cpu_support = core.query_model(model, "CPU")
+    available_devices = {device.split(".", 1)[0].upper() for device in core.available_devices}
+
+    if "NPU" in available_devices:
+        try:
+            npu_support = core.query_model(model, "NPU")
+        except Exception:
+            npu_support = {}
+    else:
+        npu_support = {}
+
+    if "GPU" in available_devices:
+        try:
+            gpu_support = core.query_model(model, "GPU")
+        except Exception:
+            gpu_support = {}
+    else:
+        gpu_support = {}
+
+    if "CPU" in available_devices:
+        try:
+            cpu_support = core.query_model(model, "CPU")
+        except Exception:
+            cpu_support = {}
+    else:
+        cpu_support = {}
 
     for node in graph_nodes:
         
@@ -90,15 +131,20 @@ def extract_model_analytics(model: ov.Model, core: ov.Core, bytes_per_element=4)
     return layer_metrics
 
 
-def resolve_openvino_device(device: str) -> str:
-    """Map torch-style device strings to OpenVINO hardware names."""
-    device_upper = device.upper()
-    if device_upper in {"CUDA", "GPU", "XPU"}:
-        return "GPU"
-    if device_upper == "CPU":
-        return "CPU"
-    if device_upper == "NPU":
-        return "NPU"
+def resolve_openvino_device(device: str, core: ov.Core) -> str:
+    """Map torch-style device strings to an available OpenVINO hardware target."""
+    device_upper = str(device).upper().split(":", 1)[0]
+    if device_upper in {"CUDA", "XPU"}:
+        device_upper = "GPU"
+
+    available_devices = {d.split(".", 1)[0].upper() for d in core.available_devices}
+    if device_upper in available_devices:
+        return device_upper
+
+    for fallback in ("CPU", "GPU", "NPU"):
+        if fallback in available_devices:
+            return fallback
+
     return device_upper
 
 class BaseModel_AIPC:
@@ -172,7 +218,7 @@ class BaseModel_AIPC:
         
     def init_model_infer_object(self, device="CPU"):
         config = {hints.performance_mode: hints.PerformanceMode.THROUGHPUT}
-        device_upper = resolve_openvino_device(device)
+        device_upper = resolve_openvino_device(device, self.core)
         if device_upper == "NPU":
             config.update({
                 "NPU_TURBO": True,
@@ -228,7 +274,8 @@ class BaseModel_AIPC:
                     correct += (predicted == labels).sum().item()
         else:
             if not self.infer_requests:
-                ov_device = resolve_openvino_device(device if device is not None else self.train_device)
+                requested_device = device if device is not None else (self.train_device if self.train_device is not None else "CPU")
+                ov_device = resolve_openvino_device(requested_device, self.core)
                 self.init_model_infer_object(ov_device)
             pipeline = []
             nireq = len(self.infer_requests)
@@ -307,6 +354,7 @@ class LeNet_AIPC(BaseModel_AIPC):
         if model is not None:
             self.model = model
         self.train_device = device
+        _configure_cpu_training_threads(self.train_device)
         self.learning_rate = learning_rate
         self.momentum = momentum
         self.model.to(self.train_device)
@@ -370,6 +418,7 @@ class AlexNet_AIPC(BaseModel_AIPC):
         if model is not None:
             self.model = model
         self.train_device = device
+        _configure_cpu_training_threads(self.train_device)
         self.learning_rate = learning_rate
         self.momentum = momentum
         self.model.to(self.train_device)
@@ -433,6 +482,7 @@ class VGG16_AIPC(BaseModel_AIPC):
         if model is not None:
             self.model = model
         self.train_device = device
+        _configure_cpu_training_threads(self.train_device)
         self.learning_rate = learning_rate
         self.momentum = momentum
         self.model.to(self.train_device)
@@ -461,34 +511,14 @@ class ResNet18_AIPC(BaseModel_AIPC):
     def load_train_val_datasets(self, batch_size=64, data_dir="./data", max_samples=80000):
         transform = transforms.Compose([
             transforms.Resize((224, 224)),
+            transforms.Grayscale(num_output_channels=3),
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
         ])
-
-        class HFImageDataset(torch.utils.data.Dataset):
-            def __init__(self, hf_data, transform):
-                self.hf_data = hf_data
-                self.transform = transform
-
-            def __len__(self):
-                return len(self.hf_data)
-
-            def __getitem__(self, idx):
-                item = self.hf_data[idx]
-                image = item["image"].convert("RGB")
-                label = item["label"]
-                image = self.transform(image)
-                return image, label
-
-        hf_dataset = load_dataset("zh-plus/tiny-imagenet", cache_dir=data_dir)
-
-        train_split = hf_dataset["train"]
-        if max_samples and len(train_split) > max_samples:
-            train_split = train_split.select(range(max_samples))
-
-        train_dataset = HFImageDataset(train_split, transform)
-        test_dataset = HFImageDataset(hf_dataset["valid"], transform)
-
+        train_dataset = datasets.MNIST(root=data_dir, train=True, download=True, transform=transform)
+        test_dataset = datasets.MNIST(root=data_dir, train=False, download=True, transform=transform)
+        if max_samples and len(train_dataset) > max_samples:
+            train_dataset = torch.utils.data.Subset(train_dataset, range(max_samples))
         self.train_dataloader = torch.utils.data.DataLoader(train_dataset, batch_size=batch_size, shuffle=True, drop_last=True)
         self.test_dataloader = torch.utils.data.DataLoader(test_dataset, batch_size=batch_size, shuffle=False, drop_last=True)
 
@@ -496,6 +526,7 @@ class ResNet18_AIPC(BaseModel_AIPC):
         if model is not None:
             self.model = model
         self.train_device = device
+        _configure_cpu_training_threads(self.train_device)
         self.learning_rate = learning_rate
         self.momentum = momentum
         self.model.to(self.train_device)

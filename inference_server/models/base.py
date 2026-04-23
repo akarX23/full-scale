@@ -22,14 +22,41 @@ torch.serialization.add_safe_globals(
 # Analytics
 # --------------------------------------------------------------------------- #
 
+def _get_available_openvino_devices(core: ov.Core) -> set[str]:
+    try:
+        return {device.split(".", 1)[0].upper() for device in core.available_devices}
+    except Exception:
+        return set()
+
 def extract_model_analytics(model: ov.Model, core: ov.Core, bytes_per_element: int = 4) -> list:
     graph_nodes = model.get_ordered_ops()
 
     layer_metrics = []
+    available_devices = _get_available_openvino_devices(core)
 
-    npu_support = core.query_model(model, "NPU")
-    gpu_support = core.query_model(model, "GPU")
-    cpu_support = core.query_model(model, "CPU")
+    if "NPU" in available_devices:
+        try:
+            npu_support = core.query_model(model, "NPU")
+        except Exception:
+            npu_support = {}
+    else:
+        npu_support = {}
+
+    if "GPU" in available_devices:
+        try:
+            gpu_support = core.query_model(model, "GPU")
+        except Exception:
+            gpu_support = {}
+    else:
+        gpu_support = {}
+
+    if "CPU" in available_devices:
+        try:
+            cpu_support = core.query_model(model, "CPU")
+        except Exception:
+            cpu_support = {}
+    else:
+        cpu_support = {}
 
     for node in graph_nodes:
         curr_mac = 0
@@ -83,6 +110,21 @@ def extract_model_analytics(model: ov.Model, core: ov.Core, bytes_per_element: i
 # --------------------------------------------------------------------------- #
 # Base AIPC class
 # --------------------------------------------------------------------------- #
+
+def resolve_openvino_device(device: str, core: ov.Core) -> str:
+    requested = str(device).upper().split(":", 1)[0]
+    if requested in {"CUDA", "XPU"}:
+        requested = "GPU"
+
+    available_devices = _get_available_openvino_devices(core)
+    if requested in available_devices:
+        return requested
+
+    for fallback in ("CPU", "GPU", "NPU"):
+        if fallback in available_devices:
+            return fallback
+
+    return requested
 
 class BaseModel_AIPC:
     # Set by child classes before super().__init__()
@@ -151,15 +193,31 @@ class BaseModel_AIPC:
         self.model.eval()
         return self.model
 
+    def configure_cpu_training_threads(self, device: str) -> None:
+        if str(device).upper().split(":", 1)[0] != "CPU":
+            return
+        if getattr(self, "_cpu_threads_configured", False):
+            return
+
+        cpu_cores = os.cpu_count() or 1
+        torch.set_num_threads(cpu_cores)
+        try:
+            torch.set_num_interop_threads(cpu_cores)
+        except RuntimeError:
+            # Inter-op threads can only be configured once in some runtimes.
+            pass
+        self._cpu_threads_configured = True
+
     def init_model_infer_object(self, device: str = "CPU"):
+        device_upper = resolve_openvino_device(device, self.core)
         config = {"PERFORMANCE_HINT": "THROUGHPUT"}
-        if device.upper() == "NPU":
+        if device_upper == "NPU":
             config.update({
                 "NPU_TURBO": True,
                 "NPU_COMPILATION_MODE_PARAMS": "optimization-level=2 performance-hint-override=latency",
             })
         from ..utils.constants import ADD_OPTIMAL_REQS
-        self.compiled_model = self.core.compile_model(self.ov_model, device, config)
+        self.compiled_model = self.core.compile_model(self.ov_model, device_upper, config)
         # Create a pool of infer requests sized to fully saturate the device
         self.optimal_nireq = self.compiled_model.get_property("OPTIMAL_NUMBER_OF_INFER_REQUESTS") + ADD_OPTIMAL_REQS
         self.infer_requests = [self.compiled_model.create_infer_request() for _ in range(self.optimal_nireq)]
@@ -204,7 +262,8 @@ class BaseModel_AIPC:
         else:
             # OV path: pipeline over the full request pool to keep the device saturated.
             if not self.infer_requests:
-                ov_device = device.upper() if device is not None else "CPU"
+                requested_device = device if device is not None else (self.train_device if self.train_device is not None else "CPU")
+                ov_device = resolve_openvino_device(requested_device, self.core)
                 self.init_model_infer_object(ov_device)
             pipeline = []
             nireq = len(self.infer_requests)

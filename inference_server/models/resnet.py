@@ -68,6 +68,7 @@ class ResNet18_AIPC(BaseModel_AIPC):
         if model is not None:
             self.model = model
         self.train_device = device
+        self.configure_cpu_training_threads(self.train_device)
         self.learning_rate = learning_rate
         self.momentum = momentum
         self.model.to(self.train_device)
