@@ -312,6 +312,27 @@ AlexNet & Quantized & 49.0 & 47.3 & 0.508G \\
 \end{tabularx}
 \end{table}
 
+\subsection{Accuracy Consistency Across Devices}
+Table~\ref{tab:accuracy-devices} verifies that each model variant produces the same classification accuracy regardless of the execution device. This is a prerequisite for meaningful throughput comparisons: if accuracy shifted between devices, raw speedup numbers would not be directly comparable. The table confirms that the OpenVINO compiled models on CPU, GPU, and NPU agree to within $\pm 0.01\%$ for every configuration, which is within the expected numerical tolerance of the runtime.
+
+\begin{table}[t]
+\caption{Accuracy comparison across devices for each model variant}
+\label{tab:accuracy-devices}
+\centering
+\begin{tabularx}{\columnwidth}{>{\raggedright\arraybackslash}p{0.17\columnwidth}>{\raggedright\arraybackslash}p{0.14\columnwidth}>{\raggedleft\arraybackslash}p{0.17\columnwidth}>{\raggedleft\arraybackslash}p{0.17\columnwidth}>{\raggedleft\arraybackslash}X}
+\toprule
+Model & Variant & CPU (\%) & GPU (\%) & NPU (\%) \\
+\midrule
+AlexNet & Dense & 48.77 & 48.77 & 48.78 \\
+AlexNet & Pruned & 47.72 & 47.72 & 47.72 \\
+LeNet & Dense & 98.70 & 98.71 & 98.70 \\
+LeNet & Pruned & 98.42 & 98.42 & 98.42 \\
+ResNet18 & Dense & 99.55 & 99.55 & 99.55 \\
+ResNet18 & Pruned & 99.12 & 99.12 & 99.12 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
 \subsection{Device-Normalized Throughput}
 Figure~\ref{fig:device-throughput} compares throughput across CPU, GPU, and NPU after normalizing each configuration to the CPU throughput of the same model variant and batch size. For each model at the largest batch size, two variant groups are shown: \emph{dense} and \emph{pruned + quantized}.
 
