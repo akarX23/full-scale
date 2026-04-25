@@ -107,7 +107,7 @@ def finetune_with_early_stopping(model_aipc: BaseModel_AIPC, max_epochs, min_acc
         print(f"  Fine-tune epoch {epoch + 1}/{max_epochs}, Loss: {avg_loss:.4f}")
         
         if (epoch > 0 and (epoch + 1) % step_check == 0) or epoch == max_epochs - 1:
-            acc = model_aipc.evaluate_accuracy()
+            acc = model_aipc.evaluate_accuracy(model=model_aipc.model)
             print(f"  Validation accuracy: {acc:.4f}")
             if acc >= min_acc:
                 print(f"  Target accuracy {min_acc:.4f} reached.")
@@ -123,7 +123,7 @@ def finetune_with_early_stopping(model_aipc: BaseModel_AIPC, max_epochs, min_acc
             print(f"  Loss plateaued for {patience} epochs, stopping early.")
             break
 
-    final_acc = model_aipc.evaluate_accuracy()
+    final_acc = model_aipc.evaluate_accuracy(model=model_aipc.model)
     return final_acc, epoch
 
 

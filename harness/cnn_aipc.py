@@ -258,47 +258,27 @@ class BaseModel_AIPC:
         return avg_loss
     
     def evaluate_accuracy(self, model=None, device=None):
+        if model is None:
+            raise ValueError("A PyTorch model must be provided for accuracy evaluation.")
+        eval_device = device if device is not None else (self.train_device if self.train_device is not None else "CPU")
+        _configure_cpu_training_threads(eval_device)
         correct = 0
         total = 0
 
-        if model is not None:
-            torch_device = device.lower() if device is not None else self.train_device
-            model.to(torch_device)
-            model.eval()
-            with torch.no_grad():
-                for images, labels in self.test_dataloader:
-                    images, labels = images.to(torch_device), labels.to(torch_device)
-                    outputs = model(images)
-                    _, predicted = torch.max(outputs.data, 1)
-                    total += labels.size(0)
-                    correct += (predicted == labels).sum().item()
-        else:
-            if not self.infer_requests:
-                requested_device = device if device is not None else (self.train_device if self.train_device is not None else "CPU")
-                ov_device = resolve_openvino_device(requested_device, self.core)
-                self.init_model_infer_object(ov_device)
-            pipeline = []
-            nireq = len(self.infer_requests)
-
-            for i, (images, labels) in enumerate(self.test_dataloader):
-                req = self.infer_requests[i % nireq]
-                if len(pipeline) == nireq:
-                    old_req, old_labels = pipeline.pop(0)
-                    old_req.wait()
-                    predicted = np.argmax(old_req.get_output_tensor().data, axis=1)
-                    total += old_labels.size(0)
-                    correct += (predicted == old_labels.numpy()).sum().item()
-                np.copyto(req.get_input_tensor().data, images.numpy())
-                req.start_async()
-                pipeline.append((req, labels))
-
-            # Drain remaining in-flight requests
-            for req, labels in pipeline:
-                req.wait()
-                predicted = np.argmax(req.get_output_tensor().data, axis=1)
+        torch_device = device.lower() if device is not None else self.train_device
+        model.to(torch_device)
+        model.eval()
+        print("Evaluating with torch model on device:", torch_device)
+        with torch.no_grad():
+            for images, labels in self.test_dataloader:
+                images, labels = images.to(torch_device), labels.to(torch_device)
+                outputs = model(images)
+                _, predicted = outputs.max(1)
+                # print(predicted, labels)
                 total += labels.size(0)
-                correct += (predicted == labels.numpy()).sum().item()
+                correct += (predicted == labels).sum().item()
 
+        # print(total, correct)
         return correct / total
     
     def save_torch_model(self, path="./models", model: torch.nn.Module=None):
@@ -508,7 +488,7 @@ class ResNet18_AIPC(BaseModel_AIPC):
         preprocessed_images = [transform(img) for img in raw_images]
         return torch.stack(preprocessed_images).numpy()
 
-    def load_train_val_datasets(self, batch_size=64, data_dir="./data", max_samples=80000):
+    def load_train_val_datasets(self, batch_size=64, data_dir="./data", max_samples=60000):
         transform = transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.Grayscale(num_output_channels=3),

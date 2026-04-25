@@ -221,7 +221,7 @@ def main():
                             aipc.load_train_val_datasets(data_dir=args.data_dir, batch_size=batch_size)
                             logger.info("Evaluating accuracy for %s / %s ...", model_name, model_type)
                             t0 = time.perf_counter()
-                            accuracy = aipc.evaluate_accuracy(device=device)
+                            accuracy = aipc.evaluate_accuracy(device=device, model=aipc.model)
                             accuracy_eval_time_s = time.perf_counter() - t0
                             logger.info("Accuracy: %.4f  (%.2f s)", accuracy, accuracy_eval_time_s)
                             accuracy_cache[cache_key] = (accuracy, accuracy_eval_time_s)

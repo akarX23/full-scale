@@ -85,7 +85,7 @@ def prune_model(model_aipc: BaseModel_AIPC, model_name="model", min_acc=0.98, sa
     acc_thresh = min_acc * 0.90 
     
     if baseline_acc is None:
-        baseline_acc = model_aipc.evaluate_accuracy()
+        baseline_acc = model_aipc.evaluate_accuracy(model=model_aipc.model)
 
     # Use a subset for ratio-search iterations, then restore full loaders for the final pass.
     full_train_loader = model_aipc.train_dataloader
@@ -107,12 +107,12 @@ def prune_model(model_aipc: BaseModel_AIPC, model_name="model", min_acc=0.98, sa
     while high - low > granularity:
         ratio = round((low + high) / 2, 2)
         
-        predict_acc = lr_regress_pruning(statistics)
-        est_acc = predict_acc(ratio) if predict_acc is not None else None
-        if est_acc is not None and est_acc < acc_thresh - 0.1:
-            print(f"  Predicted accuracy {est_acc:.4f} at ratio {ratio:.2f} is below threshold {acc_thresh:.4f}, skipping this ratio.")
-            high = ratio
-            continue
+        # predict_acc = lr_regress_pruning(statistics)
+        # est_acc = predict_acc(ratio) if predict_acc is not None else None
+        # if est_acc is not None and est_acc < acc_thresh - 0.1:
+        #     print(f"  Predicted accuracy {est_acc:.4f} at ratio {ratio:.2f} is below threshold {acc_thresh:.4f}, skipping this ratio.")
+        #     high = ratio
+        #     continue
         
         iteration += 1
         epochs_used = 0
@@ -241,13 +241,13 @@ def reduce_model_with_training(model_aipc: BaseModel_AIPC, target_accuracy=0.98,
     if reduction_mode in ("prune", "both"):
         print("Pruning the model with training...")
         prune_model(model_aipc, model_name=model_name, min_acc=acc_tolerance, save_dir=save_dir, csv_log_path=csv_log_path, baseline_acc=baseline_acc)
-        pruned_accuracy = model_aipc.evaluate_accuracy()
+        pruned_accuracy = model_aipc.evaluate_accuracy(model=model_aipc.model)
         print(f"Validation accuracy after pruning: {pruned_accuracy:.4f}")
 
     if reduction_mode in ("quantize", "both"):
         print("Quantizing the model to INT8...")
         apply_int8_quantization(model_aipc, model_name=model_name, min_acc=acc_tolerance, save_dir=save_dir)
-        quant_accuracy = model_aipc.evaluate_accuracy()
+        quant_accuracy = model_aipc.evaluate_accuracy(model=model_aipc.model)
         print(f"Validation accuracy after quantization: {quant_accuracy:.4f}")
 
     print("Model reduction with training completed.")
@@ -259,7 +259,7 @@ def train_model_for_init_acc(model_aipc, num_epochs=30):
     for epoch in range(num_epochs):
         avg_loss = model_aipc.finetune_epoch()
         print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
-    initial_accuracy = model_aipc.evaluate_accuracy()
+    initial_accuracy = model_aipc.evaluate_accuracy(model=model_aipc.model)
     print(f"Initial validation accuracy: {initial_accuracy:.4f}")
     return initial_accuracy
 
@@ -306,7 +306,7 @@ def main():
         print(f"Initial accuracy before reduction: {initial_accuracy:.4f}")
     else:
         print("Evaluating initial accuracy without training...")
-        initial_accuracy = model_aipc.evaluate_accuracy(device=device)
+        initial_accuracy = model_aipc.evaluate_accuracy(device=device, model=model_aipc.model)
         print(f"Initial accuracy (without training): {initial_accuracy:.4f}")
 
     model_aipc.refresh_init_model()

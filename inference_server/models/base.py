@@ -245,6 +245,8 @@ class BaseModel_AIPC:
         return total_loss / len(self.train_dataloader)
 
     def evaluate_accuracy(self, model=None, device=None) -> float:
+        eval_device = device if device is not None else (self.train_device if self.train_device is not None else "CPU")
+        self.configure_cpu_training_threads(eval_device)
         correct = 0
         total = 0
 

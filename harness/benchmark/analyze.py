@@ -726,6 +726,45 @@ def generate_tables(offline_dir, online_dir, preprocessed_dir, out_dir):
                 md_lines.append(f"| {model_show} | {variant_show} | {acc_pct:.2f} | {size_mb:.2f} | {_format_macs(macs)} |")
             md_lines.append("")
 
+    # ── Table: Accuracy Comparison Across Devices ───────────────────────
+    if os.path.isfile(offline_csv):
+        rows = _read_csv(offline_csv)
+
+        # Collect accuracy per (model, type, device), keeping the first non-zero value
+        acc_data = {}
+        for r in rows:
+            model = str(r.get("model", "")).strip().lower()
+            mtype = str(r.get("type", "")).strip().lower()
+            device = str(r.get("device", "")).strip()
+            acc = float(r.get("accuracy", 0) or 0)
+            if not model or not mtype or not device:
+                continue
+            key = (model, mtype, device)
+            if key not in acc_data or (acc > 0 and acc_data[key] == 0):
+                acc_data[key] = acc
+
+        if acc_data:
+            devices_present = sorted({d for _, _, d in acc_data})
+            dev_header = " | ".join(f"{d} Acc. (%)" for d in devices_present)
+            dev_sep = " | ".join("-" * 10 for _ in devices_present)
+
+            md_lines.append("## Table: Accuracy Comparison Across Devices\n")
+            md_lines.append(f"| Model | Variant | {dev_header} |")
+            md_lines.append(f"|-------|---------|{' | '.join('-' * 10 for _ in devices_present)} |")
+
+            order = {"dense": 0, "pruned": 1, "quantized": 2}
+            combos = sorted(
+                {(m, t) for m, t, _ in acc_data},
+                key=lambda k: (k[0], order.get(k[1], 99), k[1]),
+            )
+            for model, mtype in combos:
+                cells = []
+                for d in devices_present:
+                    val = acc_data.get((model, mtype, d))
+                    cells.append(f"{val * 100:.2f}" if val is not None else "-")
+                md_lines.append(f"| {model.capitalize()} | {mtype.capitalize()} | {' | '.join(cells)} |")
+            md_lines.append("")
+
     # ── Table: Server Distribution (auto mode) ──────────────────────────
     csv_path = os.path.join(online_dir, "benchmark_results.csv")
     if os.path.isfile(csv_path):
