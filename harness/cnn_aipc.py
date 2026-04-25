@@ -131,6 +131,22 @@ def extract_model_analytics(model: ov.Model, core: ov.Core, bytes_per_element=4)
     return layer_metrics
 
 
+def resolve_torch_device(device: str) -> str:
+    """Map OpenVINO / generic device strings to a torch-compatible device name."""
+    device_upper = str(device).upper().split(":", 1)[0]
+    if device_upper == "GPU":
+        if torch.cuda.is_available():
+            return "cuda"
+        if hasattr(torch, "xpu") and torch.xpu.is_available():
+            return "xpu"
+    if device_upper == "XPU":
+        if hasattr(torch, "xpu") and torch.xpu.is_available():
+            return "xpu"
+        if torch.cuda.is_available():
+            return "cuda"
+    return device_upper.lower()
+
+
 def resolve_openvino_device(device: str, core: ov.Core) -> str:
     """Map torch-style device strings to an available OpenVINO hardware target."""
     device_upper = str(device).upper().split(":", 1)[0]
@@ -258,27 +274,36 @@ class BaseModel_AIPC:
         return avg_loss
     
     def evaluate_accuracy(self, model=None, device=None):
-        if model is None:
-            raise ValueError("A PyTorch model must be provided for accuracy evaluation.")
         eval_device = device if device is not None else (self.train_device if self.train_device is not None else "CPU")
-        _configure_cpu_training_threads(eval_device)
         correct = 0
         total = 0
 
-        torch_device = device.lower() if device is not None else self.train_device
-        model.to(torch_device)
-        model.eval()
-        print("Evaluating with torch model on device:", torch_device)
-        with torch.no_grad():
+        if model is not None:
+            # PyTorch evaluation path
+            _configure_cpu_training_threads(eval_device)
+            torch_device = resolve_torch_device(device) if device is not None else self.train_device
+            model.to(torch_device)
+            model.eval()
+            print("Evaluating with torch model on device:", torch_device)
+            with torch.no_grad():
+                for images, labels in self.test_dataloader:
+                    images, labels = images.to(torch_device), labels.to(torch_device)
+                    outputs = model(images)
+                    _, predicted = outputs.max(1)
+                    total += labels.size(0)
+                    correct += (predicted == labels).sum().item()
+        else:
+            # OpenVINO evaluation path
+            if self.compiled_model is None:
+                self.init_model_infer_object(device=eval_device)
+            print("Evaluating with OpenVINO model on device:", eval_device)
             for images, labels in self.test_dataloader:
-                images, labels = images.to(torch_device), labels.to(torch_device)
-                outputs = model(images)
-                _, predicted = outputs.max(1)
-                # print(predicted, labels)
+                batch_np = images.numpy()
+                outputs = self.predict_batch(batch_np)
+                predicted = np.argmax(outputs, axis=1)
                 total += labels.size(0)
-                correct += (predicted == labels).sum().item()
+                correct += (predicted == labels.numpy()).sum()
 
-        # print(total, correct)
         return correct / total
     
     def save_torch_model(self, path="./models", model: torch.nn.Module=None):

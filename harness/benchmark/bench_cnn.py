@@ -214,14 +214,14 @@ def main():
                                             model_type=model_type, base_model_path=args.base_model_path)
                         write_layer_metrics_csv(aipc.analytics, args.results_dir, model_name, batch_size, logger, model_type=model_type)
 
-                        # Evaluate accuracy once per model+type (cached across devices and batch sizes)
-                        cache_key = (model_name, model_type)
+                        # Evaluate accuracy once per model+type+device (cached across batch sizes)
+                        cache_key = (model_name, model_type, device)
                         
                         if cache_key not in accuracy_cache:
                             aipc.load_train_val_datasets(data_dir=args.data_dir, batch_size=batch_size)
-                            logger.info("Evaluating accuracy for %s / %s ...", model_name, model_type)
+                            logger.info("Evaluating accuracy for %s / %s / %s ...", model_name, model_type, device)
                             t0 = time.perf_counter()
-                            accuracy = aipc.evaluate_accuracy(device=device, model=aipc.model)
+                            accuracy = aipc.evaluate_accuracy(device=device)
                             accuracy_eval_time_s = time.perf_counter() - t0
                             logger.info("Accuracy: %.4f  (%.2f s)", accuracy, accuracy_eval_time_s)
                             accuracy_cache[cache_key] = (accuracy, accuracy_eval_time_s)
